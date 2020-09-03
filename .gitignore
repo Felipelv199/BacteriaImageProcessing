@@ -1,0 +1,9 @@
+# folders
+.vs
+x64
+
+# visual studio dependencies
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
