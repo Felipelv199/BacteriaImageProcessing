@@ -168,7 +168,6 @@ void mouseCallBack(int event, int x, int y, int flags, void* userdata) {
 			C_sd.convertTo(outputImage, CV_8UC3);
 			showImageWithAR(outputImage, "New");
 			showImageWithAR(image, "Original");
-			imwrite("image2.png", outputImage);
 			createRGBHistogram(outputImage, radius, 2);
 			printf("Sali\n");
 		}
