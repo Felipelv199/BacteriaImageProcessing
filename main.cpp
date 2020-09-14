@@ -12,7 +12,7 @@ using namespace std;
 Mat image;
 int mouseClicks = 0;
 Point center;
-const string imageName = "sample1";
+const string imageName = "sample2";
 
 
 void showImageWithAR(Mat src, String windowName) {
@@ -37,7 +37,7 @@ double getRadius(int x0, int y0, int x, int y) {
 	return sqrt((a * a) + (b * b));
 }
 
-void createRGBHistogram(Mat src, double r=0) {
+void createRGBHistogram(Mat src, double r=0, int scale=1) {
 	const int n = 256;
 	int reds[n] = { 0 };
 	int greens[n] = { 0 };
@@ -49,9 +49,10 @@ void createRGBHistogram(Mat src, double r=0) {
 				newR = getRadius(center.x, center.y, j, i);
 			}
 			if (newR <= r) {
-				reds[(int)src.at<Vec3b>(i, j)[2]]++;
-				greens[(int)src.at<Vec3b>(i, j)[1]]++;
-				blues[(int)src.at<Vec3b>(i, j)[0]]++;
+				Vec3f channels = src.at<Vec3b>(i, j);
+				reds[(int)channels[2]]++;
+				greens[(int)channels[1]]++;
+				blues[(int)channels[0]]++;
 			}
 		}
 	}
@@ -71,7 +72,7 @@ void createRGBHistogram(Mat src, double r=0) {
 		}
 	}
 
-	const int size = 500;
+	const int size = 256*scale;
 	Mat histR = Mat(size, size, CV_8UC3, Scalar(0));
 	Mat histB = Mat(size, size, CV_8UC3, Scalar(0));
 	Mat histG = Mat(size, size, CV_8UC3, Scalar(0));
@@ -105,40 +106,22 @@ void createRGBHistogram(Mat src, double r=0) {
 	imshow("Histgram Blue", histB);
 }
 
-Vec3b getMaskAvarage(Mat src, int size, int r, int c) {
-	double sumValues[3] = { 0 };
-	double countValues = 0;
-	for (int row = -1 * size / 2; row <= size / 2; row++) {
-		for (int col = -1 * size / 2; col <= size / 2; col++) {
-			sumValues[0] += src.at<Vec3b>(r + row, c + col)[0];
-			sumValues[1] += src.at<Vec3b>(r + row, c + col)[1];
-			sumValues[2] += src.at<Vec3b>(r + row, c + col)[2];
-			countValues++;
-		}
-	}
-	sumValues[0] = sumValues[0] / countValues;
-	sumValues[1] = sumValues[1] / countValues;
-	sumValues[2] = sumValues[2] / countValues;
-	return Vec3b(sumValues[0], sumValues[1], sumValues[2]);
-}
+Vec3f getStandarDeviation(Mat src, int size, int r, int c) {
+	float sigma[3] = {0};
 
-Vec3b getStandarDeviation(Mat src, Vec3b average, float N, int size, int r, int c) {
-	double sigma[3] = { 0 };
-	double x[3] = { 0 };
 	for (int row = -1 * size / 2; row <= size / 2; row++) {
 		for (int col = -1 * size / 2; col <= size / 2; col++) {
-			x[0] = src.at<Vec3b>(r + row, c + col)[0] - average[0];
-			x[1] = src.at<Vec3b>(r + row, c + col)[1] - average[1];
-			x[2] = src.at<Vec3b>(r + row, c + col)[2] - average[2];
-			sigma[0] += (x[0] * x[0]);
-			sigma[1] += (x[1] * x[1]);
-			sigma[2] += (x[2] * x[2]);
+			Vec3f x = src.at<Vec3f>(r + row, c + col);
+			sigma[0] += x[0];
+			sigma[1] += x[1];
+			sigma[2] += x[2];
 		}
 	}
-	sigma[0] = sqrt(sigma[0] / N);
-	sigma[1] = sqrt(sigma[1] / N);
-	sigma[2] = sqrt(sigma[2] / N);
-	return Vec3b(sigma[0], sigma[1], sigma[2]);
+
+	sigma[0] = sqrt(sigma[0]);
+	sigma[1] = sqrt(sigma[1]);
+	sigma[2] = sqrt(sigma[2]);
+	return Vec3f(sigma[0], sigma[1], sigma[2]);
 }
 
 void mouseCallBack(int event, int x, int y, int flags, void* userdata) {
@@ -146,31 +129,47 @@ void mouseCallBack(int event, int x, int y, int flags, void* userdata) {
 		mouseClicks++;
 		if (mouseClicks % 2 == 0) {
 			printf("Entre\n");
-			Mat src = Mat(image.rows, image.cols, CV_8UC3, Scalar(0));
+			Mat image_float;
+			image.convertTo(image_float, CV_32FC3);
+			Mat mask = Mat(image.rows, image.cols, CV_32FC3, Scalar(0));
 			double radius = getRadius(center.x, center.y, x, y);
 			double nr = 0;
-			const int mask_size = 9;
 
-			for (int i = 0; i < src.rows; i++) {
-				for (int j = 0; j < src.cols; j++) {
+			for (int i = 0; i < mask.rows; i++) {
+				for (int j = 0; j < mask.cols; j++) {
 					nr = getRadius(center.x, center.y, j, i);
-					if (nr > radius) {
-						src.at<Vec3b>(i, j) = image.at<Vec3b>(i, j);
+					if (nr <= radius) {
+						mask.at<Vec3f>(i, j) = Vec3f(1.0, 1.0, 1.0);
 					}
-					else {
-						src.at<Vec3b>(i, j) = image.at<Vec3b>(i, j); 
-						if (i - (mask_size / 2) >= 0 && i + (mask_size / 2) < src.rows && j - (mask_size / 2) >= 0 && j + (mask_size / 2) < src.cols) {
-							Vec3b average = getMaskAvarage(image, mask_size, i, j);
-							Vec3b sd = getStandarDeviation(image, average, (float)mask_size * mask_size, mask_size, i, j);
-							src.at<Vec3b>(i, j) = sd;
+				}
+			}
+
+			Mat C = image_float.mul(mask);
+			Mat C_blur = Mat(image.rows, image.cols, CV_32FC3, Scalar(0));
+			const double mask_size = 9;
+			blur(C, C_blur, Size((int)mask_size, (int)mask_size));
+			Mat C_dif = C - C_blur;
+			Mat C_dif_pow = C_dif.mul(C_dif/ (mask_size * mask_size));
+
+			Mat C_sd = Mat(image.rows, image.cols, CV_32FC3, Scalar(0));
+			for (int i = 0; i < C_sd.rows; i++) {
+				for (int j = 0; j < C_sd.cols; j++) {
+					nr = getRadius(center.x, center.y, j, i);
+					if (nr <= radius) {
+						if (i - (mask_size / 2) >= 0 && i + (mask_size / 2) < C_dif_pow.rows && j - (mask_size / 2) >= 0 && j + (mask_size / 2) < C_dif_pow.cols) {
+							 Vec3f sd = getStandarDeviation(C_dif_pow, (int)mask_size, i, j);
+							 C_sd.at<Vec3f>(i, j) = sd;
 						}
 					}
 				}
 			}
-			
-			showImageWithAR(src, "New");
+
+			Mat outputImage;
+			C_sd.convertTo(outputImage, CV_8UC3);
+			showImageWithAR(outputImage, "New");
 			showImageWithAR(image, "Original");
-			createRGBHistogram(src, radius);
+			imwrite("image2.png", outputImage);
+			createRGBHistogram(outputImage, radius, 2);
 			printf("Sali\n");
 		}
 		else {
