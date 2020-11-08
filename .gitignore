@@ -7,3 +7,6 @@ x64
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
+
+*.jpg
+*.img
