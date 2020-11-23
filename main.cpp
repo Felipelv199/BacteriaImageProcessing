@@ -10,16 +10,16 @@
 using namespace cv;
 using namespace std;
 
+const string imageName = "sample1";
+int mouseClicks = 0, regionsPixelCount = 0, maskPixels=0;
 Mat image;
-Mat image_normalized;
+Mat resized;
 Mat output;
-int mouseClicks = 0;
 Point center;
-const string imageName = "sample2";
 
 
 void showImageWithAR(Mat src, String windowName) {
-	const String name = windowName + " " + imageName;
+	const String name = windowName;
 	namedWindow(name, WINDOW_KEEPRATIO);
 	imshow(name, src);
 	resizeWindow(name, src.cols / 8, src.rows / 8);
@@ -215,11 +215,7 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 	{
 		return true;
 	}
-
-	//Mat window = res.rowRange(1000,2500);
-
 	Vec3b pixelImg = imgori.at<Vec3b>(y0, x0);
-
 	std::vector<Point2d> colaPts;
 	Point2d pt0(x0, y0);
 	Point2d pt1;
@@ -227,7 +223,7 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 	if ((res.at<Vec3b>(y0, x0)) == Vec3b(0, 0, 0))
 	{
 		res.at<Vec3b >(y0, x0) = val;
-		// push segunda cola
+		regionsPixelCount++;
 		for (int k = -1; k < 2; k++)
 		{
 			for (int l = -1; l < 2; l++)
@@ -235,7 +231,7 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 				if (!(k == 0 && l == 0)) {
 					if ((x0 + l) >= 0 && (x0 + l) < (imgori.cols) && (y0 + k) >= 0 && (y0 + k) < (imgori.rows))
 					{
-						colaPts.push_back(Point2d(x0 + l, y0 + k));
+						colaPts.push_back(Point2d((double)(x0 + l), (double)(y0 + k)));
 					}
 				}
 			}
@@ -243,11 +239,8 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 		int counter = 0;
 		while (colaPts.size() > 0)
 		{
-			//printf("%d\n", colaPts.size());
 			pt1 = colaPts[0];
 			colaPts.erase(colaPts.begin());
-			//if (((int)imgori.at<uchar>(pt1.y, pt1.x)) == 255)  dif de color entre x0 y pt1. < 10
-			//if (getDistances(pt0, pt1) < 10) {
 			if(getColorDistance(pixelImg, imgori.at<Vec3b>(pt1.y, pt1.x))<15)
 			{
 				if ((res.at<Vec3b>(pt1.y, pt1.x)) == Vec3b(0, 0, 0))
@@ -256,15 +249,10 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 					if (counter > 100) {
 						counter = 0;
 						showImageWithAR(res, "avance");
-						/*
-						namedWindow("avance", WINDOW_NORMAL);
-						imshow("avance", res);
-						*/
 						waitKey(2);
 					}
 					res.at<Vec3b>(pt1.y, pt1.x) = val;
-					// push segunda cola
-
+					regionsPixelCount++;
 					for (int k = -1; k < 2; k++)
 					{
 						for (int l = -1; l < 2; l++)
@@ -278,22 +266,22 @@ bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
 						}
 					}
 				}
-				//sigue sacando de la cola
 			}
 		}
 		showImageWithAR(res, "avance");
 	}
-	printf("%d %d  \n",x0,y0);
 	return false;
 }
 
 void mouseCallBack_Regions(int event, int x, int y, int flags, void* userdata) {
 	if (event == 1) {
 		Point point = Point(x, y);
-		//int regions = floodFill(image_normalized,point,Scalar(rand() % 255, rand() % 255, rand() % 255),(Rect *)0, Scalar(10,10,10), Scalar(10,10,10),FLOODFILL_FIXED_RANGE);
 		Vec3b pixel = Vec3b(255,255,255);
-		growRQcolor(image_normalized, output, x, y, pixel);
-		showImageWithAR(image_normalized, "mask");
+		growRQcolor(resized, output, x, y, pixel);
+		printf("Circle pixel number area: %d\n", maskPixels);
+		printf("Number of white pixels: %d\n", regionsPixelCount);
+		printf("White pixels circle area percentage: %f%%\n", (regionsPixelCount/(double)(maskPixels))*100);
+		showImageWithAR(resized, "mask");
 	}
 }
 
@@ -302,31 +290,23 @@ void mouseCallBack_Mask(int event, int x, int y, int flags, void* userdata) {
 		mouseClicks++;
 		if (mouseClicks % 2 == 0) {
 			printf("Entre\n");
-			Mat mask_inside = Mat(image.rows, image.cols, image.type(), Scalar(0));
-			Mat mask_outside = Mat(image.rows, image.cols, image.type(), Scalar(0));
+			regionsPixelCount = 0;
+			Mat mask_inside = Mat(resized.rows, resized.cols, resized.type(), Scalar(0));
 			double radius = getRadius(center.x, center.y, x, y);
 			double nr = 0;
-
-			for (int i = 0; i < image.rows; i++) {
-				for (int j = 0; j < image.cols; j++) {
+			maskPixels = 0;
+			for (int i = 0; i < resized.rows; i++) {
+				for (int j = 0; j < resized.cols; j++) {
 					nr = getRadius(center.x, center.y, j, i);
 					if (nr <= radius) {
 						mask_inside.at<Vec3b>(i, j) = Vec3b(1,1,1);
-					}
-					else {
-						mask_outside.at<Vec3b>(i, j) = Vec3b(1, 1, 1);
+						maskPixels++;
 					}
 				}
 			}
-			image_normalized = mask_inside.mul(image_normalized);
-
-			showImageWithAR(image_normalized, "mask");
-			setMouseCallback("mask " + imageName, mouseCallBack_Regions);
-			/*
-			Mat sd_image = getStandarDeviation(image, x, y);
-			showImageWithAR(sd_image, "New");
-			showImageWithAR(image, "Original");
-			*/
+			resized = mask_inside.mul(resized);
+			showImageWithAR(resized, "mask");
+			setMouseCallback("mask", mouseCallBack_Regions);
 			printf("Sali\n");
 		}
 		else {
@@ -340,40 +320,11 @@ int main()
 {
 	image = imread(imageName + ".jpg", IMREAD_COLOR);
 	int scalar = 2;
-	Mat resized(image.rows/scalar, image.cols/scalar, image.type());
+	resized = Mat(image.rows/scalar, image.cols/scalar, image.type());
 	resize(image, resized, resized.size(),0.5,0.5,INTER_LINEAR);
-	image = resized.clone();
-	output  = Mat(image.rows, image.cols, image.type(), Scalar(0, 0, 0));
-	image_normalized = image;
-	/*
-	image_normalized = Mat(image.rows, image.cols, image.type());
-	double u = 0;
-	int newPixel[3] = { 0 };
-	for (int i = 0; i < image.rows; i++) {
-		for (int j = 0; j < image.cols; j++) {
-			Vec3b pixel = image.at<Vec3b>(i,j);
-			for (int k = 0; k < image.channels(); k++) {
-				u+=pixel[k];
-			}
-			for (int k = 0; k < image.channels(); k++) {
-				newPixel[k] = (pixel[k]/u) * 255;
-			}
-			image_normalized.at<Vec3b>(i, j) = Vec3b(newPixel[0], newPixel[1], newPixel[2]);
-			u = 0;
-		}
-	}
-
-	Mat channels[3];
-	split(image_normalized, channels);
-	double maxValues[3] = { 0 };
-	minMaxLoc(channels[0], (double*)0, &maxValues[0]);
-	minMaxLoc(channels[1], (double*)0, &maxValues[1]);
-	minMaxLoc(channels[2], (double*)0, &maxValues[2]);
-	double image_max = max(maxValues[0], max(maxValues[1], maxValues[2]));
-	showImageWithAR(image, "Original");
-	*/
-	showImageWithAR(image_normalized, "Normalized");
-	setMouseCallback("Normalized "+ imageName, mouseCallBack_Mask);
+	output  = Mat(resized.rows, resized.cols, image.type(), Scalar(0, 0, 0));
+	showImageWithAR(resized, "Normalized");
+	setMouseCallback("Normalized", mouseCallBack_Mask);
 	waitKey(0);
 	destroyAllWindows();
 }
