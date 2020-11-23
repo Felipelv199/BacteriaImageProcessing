@@ -12,9 +12,10 @@ using namespace std;
 
 Mat image;
 Mat image_normalized;
+Mat output;
 int mouseClicks = 0;
 Point center;
-const string imageName = "sample5";
+const string imageName = "sample2";
 
 
 void showImageWithAR(Mat src, String windowName) {
@@ -192,10 +193,106 @@ Mat getStandarDeviation(Mat src, int x, int y) {
 }
 
 
+double getDistances(Point2d p0, Point2d p1) {
+
+	int x = p1.x - p0.x;
+	int y = p1.y - p0.y;
+
+	return sqrt(x * x + y * y);
+}
+
+double getColorDistance(Vec3b c0, Vec3b c1) {
+	double b = c1[0]-c0[0];
+	double g = c1[1]-c0[1];
+	double r = c1[2]-c0[2];
+
+	return sqrt((b*b)+(g*g)+(r*r));
+}
+
+bool growRQcolor(Mat imgori, Mat res, int x0, int y0, Vec3b val)
+{
+	if (x0 < 0 || x0 >= (imgori.cols) || y0 < 0 || y0 >= (imgori.rows))
+	{
+		return true;
+	}
+
+	//Mat window = res.rowRange(1000,2500);
+
+	Vec3b pixelImg = imgori.at<Vec3b>(y0, x0);
+
+	std::vector<Point2d> colaPts;
+	Point2d pt0(x0, y0);
+	Point2d pt1;
+	colaPts.clear();
+	if ((res.at<Vec3b>(y0, x0)) == Vec3b(0, 0, 0))
+	{
+		res.at<Vec3b >(y0, x0) = val;
+		// push segunda cola
+		for (int k = -1; k < 2; k++)
+		{
+			for (int l = -1; l < 2; l++)
+			{
+				if (!(k == 0 && l == 0)) {
+					if ((x0 + l) >= 0 && (x0 + l) < (imgori.cols) && (y0 + k) >= 0 && (y0 + k) < (imgori.rows))
+					{
+						colaPts.push_back(Point2d(x0 + l, y0 + k));
+					}
+				}
+			}
+		}
+		int counter = 0;
+		while (colaPts.size() > 0)
+		{
+			//printf("%d\n", colaPts.size());
+			pt1 = colaPts[0];
+			colaPts.erase(colaPts.begin());
+			//if (((int)imgori.at<uchar>(pt1.y, pt1.x)) == 255)  dif de color entre x0 y pt1. < 10
+			//if (getDistances(pt0, pt1) < 10) {
+			if(getColorDistance(pixelImg, imgori.at<Vec3b>(pt1.y, pt1.x))<15)
+			{
+				if ((res.at<Vec3b>(pt1.y, pt1.x)) == Vec3b(0, 0, 0))
+				{
+					counter++;
+					if (counter > 100) {
+						counter = 0;
+						showImageWithAR(res, "avance");
+						/*
+						namedWindow("avance", WINDOW_NORMAL);
+						imshow("avance", res);
+						*/
+						waitKey(2);
+					}
+					res.at<Vec3b>(pt1.y, pt1.x) = val;
+					// push segunda cola
+
+					for (int k = -1; k < 2; k++)
+					{
+						for (int l = -1; l < 2; l++)
+						{
+							if (!(k == 0 && l == 0))
+								if ((pt1.x + l) >= 0 && (pt1.x + l) < (imgori.cols) && (pt1.y + k) >= 0 && (pt1.y + k) < (imgori.rows))
+								{
+									if ((res.at<Vec3b>(pt1.y + k, pt1.x + l)) == Vec3b(0, 0, 0))
+										colaPts.push_back(Point2d(pt1.x + l, pt1.y + k));
+								}
+						}
+					}
+				}
+				//sigue sacando de la cola
+			}
+		}
+		showImageWithAR(res, "avance");
+	}
+	printf("%d %d  \n",x0,y0);
+	return false;
+}
+
 void mouseCallBack_Regions(int event, int x, int y, int flags, void* userdata) {
 	if (event == 1) {
 		Point point = Point(x, y);
-		int regions = floodFill(image_normalized,point,Scalar(rand() % 255, rand() % 255, rand() % 255),(Rect *)0, Scalar(10,10,10), Scalar(10,10,10),FLOODFILL_FIXED_RANGE);
+		//int regions = floodFill(image_normalized,point,Scalar(rand() % 255, rand() % 255, rand() % 255),(Rect *)0, Scalar(10,10,10), Scalar(10,10,10),FLOODFILL_FIXED_RANGE);
+		Vec3b pixel = Vec3b(255,255,255);
+		growRQcolor(image_normalized, output, x, y, pixel);
 		showImageWithAR(image_normalized, "mask");
 	}
 }
@@ -238,87 +335,17 @@ void mouseCallBack_Mask(int event, int x, int y, int flags, void* userdata) {
 	}
 }
 
-double getDistances(Point2d p0, Point2d p1) {
-
-	int x = p1.x - p0.x;
-	int y = p1.y - p0.y;
-
-	return sqrt(x*x+y*y);
-}
-
-bool growRQcolor(const Mat& imgori, Mat& res, int x0, int y0, Vec3b val)
-{
-	if (x0 < 0 || x0 >= (imgori.cols) || y0 < 0 || y0 >= (imgori.rows))
-	{
-		return true;
-	}
-	std::vector<Point2d> colaPts;
-	Point2d pt0(x0,y0);
-	Point2d pt1;
-	colaPts.clear();
-	if (((int)imgori.at<uchar>(y0, x0)) == 255)
-	{
-		if ((res.at<Vec3b>(y0, x0)) == Vec3b(0, 0, 0))
-		{
-			res.at<Vec3b >(y0, x0) = val;
-
-			for (int k = -1; k < 2; k++)
-			{
-				for (int l = -1; l < 2; l++)
-				{
-					if (!(k == 0 && l == 0)) {
-						if ((x0 + l) >= 0 && (x0 + l) < (imgori.cols) && (y0 + k) >= 0 && (y0 + k) < (imgori.rows))
-						{
-							colaPts.push_back(Point2d(x0 + l, y0 + k));
-						}
-					}
-				}
-			}
-			while (colaPts.size() > 0)
-			{
-				pt1 = colaPts[0];
-				colaPts.erase(colaPts.begin());
-				//if (((int)imgori.at<uchar>(pt1.y, pt1.x)) == 255)  dif de color entre x0 y pt1. < 10
-				if (getDistances(pt0, pt1) < 10) {
-					if ((res.at<Vec3b>(pt1.y, pt1.x)) == Vec3b(0, 0, 0))
-					{
-						res.at<Vec3b >(pt1.y, pt1.x) = val;
-						namedWindow("avance", WINDOW_NORMAL);
-						imshow("avance", res);
-						waitKey(2);
-
-						for (int k = -1; k < 2; k++)
-						{
-							for (int l = -1; l < 2; l++)
-							{
-								if (!(k == 0 && l == 0))
-									if ((pt1.x + l) >= 0 && (pt1.x + l) < (imgori.cols) && (pt1.y + k) >= 0 && (pt1.y + k) < (imgori.rows))
-									{
-										if ((res.at<Vec3b>(pt1.y + k, pt1.x + l)) == Vec3b(0, 0, 0))
-											colaPts.push_back(Point2d(pt1.x + l, pt1.y + k));
-									}
-							}
-						}
-					}
-					//sigue sacando de la cola
-				}
-			}
-
-			namedWindow("avance", WINDOW_NORMAL);
-			imshow("avance", res);
-			waitKey(10);
-		}
-
-	}
-	//printf("%d %d  \n",x0,y0);
-	return false;
-}
-
 
 int main()
 {
 	image = imread(imageName + ".jpg", IMREAD_COLOR);
-
+	int scalar = 2;
+	Mat resized(image.rows/scalar, image.cols/scalar, image.type());
+	resize(image, resized, resized.size(),0.5,0.5,INTER_LINEAR);
+	image = resized.clone();
+	output  = Mat(image.rows, image.cols, image.type(), Scalar(0, 0, 0));
+	image_normalized = image;
+	/*
 	image_normalized = Mat(image.rows, image.cols, image.type());
 	double u = 0;
 	int newPixel[3] = { 0 };
@@ -343,8 +370,8 @@ int main()
 	minMaxLoc(channels[1], (double*)0, &maxValues[1]);
 	minMaxLoc(channels[2], (double*)0, &maxValues[2]);
 	double image_max = max(maxValues[0], max(maxValues[1], maxValues[2]));
-
 	showImageWithAR(image, "Original");
+	*/
 	showImageWithAR(image_normalized, "Normalized");
 	setMouseCallback("Normalized "+ imageName, mouseCallBack_Mask);
 	waitKey(0);
